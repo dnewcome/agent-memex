@@ -1,0 +1,17 @@
+{
+  "name": "agent-memex",
+  "version": "0.1.0",
+  "description": "Pansophia-based agent memory system",
+  "type": "module",
+  "bin": {
+    "pansophia-recall": "./src/recall.js"
+  },
+  "scripts": {
+    "start": "node src/server.js",
+    "recall": "node src/recall.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.10.2",
+    "better-sqlite3": "^11.9.1"
+  }
+}
