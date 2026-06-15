@@ -58,5 +58,23 @@ db.exec(`
   );
 `);
 
+// --- Provenance migration ---
+// session_id records which Claude Code session produced a row (stamped by the
+// Stop-hook distiller, capture-session.js). Additive and nullable: rows written
+// before this column existed simply carry NULL. Idempotent — safe to run on an
+// existing DB on every startup.
+function ensureColumn(table, column, type) {
+  const cols = db.prepare(`PRAGMA table_info(${table})`).all();
+  if (!cols.some((c) => c.name === column)) {
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`);
+  }
+}
+for (const table of ['thought', 'meaning', 'connection']) {
+  ensureColumn(table, 'session_id', 'TEXT');
+}
+db.exec(`CREATE INDEX IF NOT EXISTS idx_thought_session    ON thought(session_id);`);
+db.exec(`CREATE INDEX IF NOT EXISTS idx_meaning_session    ON meaning(session_id);`);
+db.exec(`CREATE INDEX IF NOT EXISTS idx_connection_session ON connection(session_id);`);
+
 export default db;
 export { DB_PATH };

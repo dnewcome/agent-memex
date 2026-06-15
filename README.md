@@ -80,10 +80,12 @@ User submits first prompt
 ```sql
 observer    (id, name, created_at)
 expression  (id, text, created_at)
-thought     (id, observer_id, expression_id, created_at)
-meaning     (id, observer_id, expression_id, text, created_at)
-connection  (id, observer_id, from_expression_id, to_expression_id, relation, created_at)
+thought     (id, observer_id, expression_id, created_at, session_id)
+meaning     (id, observer_id, expression_id, text, created_at, session_id)
+connection  (id, observer_id, from_expression_id, to_expression_id, relation, created_at, session_id)
 ```
+
+`session_id` (nullable) records which Claude Code session produced a row, stamped by the Stop-hook distiller. It is added idempotently on startup, so existing databases migrate in place and pre-existing rows keep `NULL`.
 
 All tables are append-only by convention. Nothing is ever updated or deleted — new records supersede old ones. This preserves the full history of what was known and when.
 
@@ -177,6 +179,34 @@ import('./src/model.js').then(({ recall, recallConnections }) => {
 ```
 
 To import an existing MEMORY.md or individual memory files into pansophia, parse the frontmatter and body structure and call `remember()` for each entry. A migration script is a natural next step (see Future Work).
+
+---
+
+## Web UI (memory explorer)
+
+`web/` is a read-only [SvelteKit](https://kit.svelte.dev/) app for browsing, understanding, and querying the store as a whole — the corpus has grown well past what the MCP `recall`/`reflect` tools can surface at a glance.
+
+```bash
+cd web
+npm install        # compiles the better-sqlite3 native binding
+npm run dev         # http://localhost:5173
+```
+
+It opens the same database the MCP server writes to (`PANSOPHIA_DATA_DIR` → `pansophia.db`) **read-only**, so it is safe to run alongside live agent sessions (WAL mode allows concurrent readers). Set `PANSOPHIA_DATA_DIR` before launching to point at a different store.
+
+Five views:
+
+- **Overview** — counts, rolling activity (thoughts/day, bars link into that day's connections), most-active entities, the relation-vocabulary breakdown (surfacing how many relation labels are used only once), and basic data-quality counts.
+- **Entities** — searchable, sortable, paginated list of expressions; each links to a detail page showing its full thought log, all meanings, and incoming/outgoing connections (the `reflect` view), with connections navigable as links. Thoughts/meanings link to the **session** that produced them (when provenance is recorded — see below).
+- **Connections** — aggregated edges filterable by relation label, project, and **creation-date range**; the relation list reflects the active range (so it doubles as "relations created in window X") and exports to CSV.
+- **Sessions** — browses the Claude Code transcripts under `~/.claude/projects` (override with `CLAUDE_PROJECTS_DIR`), newest first, with a per-session **memory count** and a detail page listing exactly what each session contributed to pansophia. Each detail page links to a **transcript reader** that renders the conversation (user/assistant turns, thinking, tool calls, and tool results — the noisy blocks collapsed by default, long blocks capped). Distillation runs (the Stop-hook's own `claude -p` invocations) are tagged and can be hidden.
+- **Query** — a free-form SQL console. Because the connection is read-only, write statements are rejected by SQLite; a handful of preset queries are included.
+
+### Memory ↔ session provenance
+
+Each `thought`, `meaning`, and `connection` carries an optional `session_id` (nullable column; added idempotently by `src/db.js`). The Stop-hook distiller (`src/capture-session.js`) stamps the originating session id onto everything it writes, so the explorer can navigate from any memory to the session that produced it and vice-versa. Memories written before this column existed carry `NULL` and simply show no session link.
+
+A global **scope** selector filters the Overview, Entities, and Connections views to a project (inclusive: entities tagged `in_project` for that project *plus* untagged globals), mirroring the recall-hook scoping in `src/model.js`. Graph visualization is intentionally deferred.
 
 ---
 

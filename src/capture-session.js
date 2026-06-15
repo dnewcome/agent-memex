@@ -86,12 +86,12 @@ function distill(transcript) {
   }
 }
 
-function applyObservations(obs, projectSlug) {
+function applyObservations(obs, projectSlug, ctx) {
   const tagged = new Set();
   const tag = (text) => {
     if (!projectSlug || !text || tagged.has(text)) return;
     tagged.add(text);
-    try { connect(OBSERVER, text, projectSlug, IN_PROJECT_RELATION); } catch {}
+    try { connect(OBSERVER, text, projectSlug, IN_PROJECT_RELATION, ctx); } catch {}
   };
 
   for (const o of obs.slice(0, MAX_OBSERVATIONS)) {
@@ -99,7 +99,7 @@ function applyObservations(obs, projectSlug) {
       if (o?.op === 'remember' && typeof o.expression === 'string' && o.expression.trim()) {
         const expr = o.expression.trim();
         const meaning = typeof o.meaning === 'string' && o.meaning.trim() ? o.meaning.trim() : null;
-        remember(OBSERVER, expr, meaning);
+        remember(OBSERVER, expr, meaning, ctx);
         tag(expr);
       } else if (
         o?.op === 'connect' &&
@@ -109,12 +109,24 @@ function applyObservations(obs, projectSlug) {
         const from = o.from.trim();
         const to = o.to.trim();
         const relation = typeof o.relation === 'string' && o.relation.trim() ? o.relation.trim() : null;
-        connect(OBSERVER, from, to, relation);
+        connect(OBSERVER, from, to, relation, ctx);
         tag(from);
         tag(to);
       }
     } catch { /* skip malformed entry, keep going */ }
   }
+}
+
+// The Stop-hook payload carries the session id directly; fall back to the
+// transcript filename (`<sessionId>.jsonl`) if it is ever absent.
+function sessionIdFrom(payload) {
+  if (typeof payload?.session_id === 'string' && payload.session_id) return payload.session_id;
+  const path = payload?.transcript_path;
+  if (typeof path === 'string') {
+    const base = path.split('/').pop() ?? '';
+    if (base.endsWith('.jsonl')) return base.slice(0, -'.jsonl'.length);
+  }
+  return null;
 }
 
 try {
@@ -132,7 +144,8 @@ try {
   if (!observations || observations.length === 0) process.exit(0);
 
   const projectSlug = findProjectSlug(payload.cwd);
-  applyObservations(observations, projectSlug);
+  const ctx = { sessionId: sessionIdFrom(payload) };
+  applyObservations(observations, projectSlug, ctx);
 } catch { /* swallow — never break the session */ }
 
 process.exit(0);

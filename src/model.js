@@ -20,19 +20,20 @@ function ensureExpression(text) {
  * Record that an observer encountered an expression, optionally with a meaning.
  * Returns the thought id.
  */
-export function remember(observerName, expressionText, meaningText = null) {
+export function remember(observerName, expressionText, meaningText = null, ctx = {}) {
   const observer = ensureObserver(observerName);
   const expression = ensureExpression(expressionText);
+  const sessionId = ctx.sessionId ?? null;
 
   const thought = db.prepare(`
-    INSERT INTO thought (observer_id, expression_id) VALUES (?, ?)
-  `).run(observer.id, expression.id);
+    INSERT INTO thought (observer_id, expression_id, session_id) VALUES (?, ?, ?)
+  `).run(observer.id, expression.id, sessionId);
 
   let meaning = null;
   if (meaningText) {
     meaning = db.prepare(`
-      INSERT INTO meaning (observer_id, expression_id, text) VALUES (?, ?, ?)
-    `).run(observer.id, expression.id, meaningText);
+      INSERT INTO meaning (observer_id, expression_id, text, session_id) VALUES (?, ?, ?, ?)
+    `).run(observer.id, expression.id, meaningText, sessionId);
   }
 
   return { thoughtId: thought.lastInsertRowid, meaningId: meaning?.lastInsertRowid ?? null };
@@ -41,15 +42,15 @@ export function remember(observerName, expressionText, meaningText = null) {
 /**
  * Record a connection between two expressions from an observer's perspective.
  */
-export function connect(observerName, fromText, toText, relation = null) {
+export function connect(observerName, fromText, toText, relation = null, ctx = {}) {
   const observer = ensureObserver(observerName);
   const from = ensureExpression(fromText);
   const to = ensureExpression(toText);
 
   const result = db.prepare(`
-    INSERT INTO connection (observer_id, from_expression_id, to_expression_id, relation)
-    VALUES (?, ?, ?, ?)
-  `).run(observer.id, from.id, to.id, relation);
+    INSERT INTO connection (observer_id, from_expression_id, to_expression_id, relation, session_id)
+    VALUES (?, ?, ?, ?, ?)
+  `).run(observer.id, from.id, to.id, relation, ctx.sessionId ?? null);
 
   return { connectionId: result.lastInsertRowid };
 }
